@@ -25,7 +25,7 @@ public class ClientProcessData implements Runnable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ClientProcessData.class.getName());
 
-    // an list of trace map,like ring buffe.  key is traceId, value is spans ,  r
+    // an list of trace map,like ring buffer.  key is traceId, value is spans ,  r
     private static List<Map<String,List<String>>> BATCH_TRACE_LIST = new ArrayList<>();
     // make 50 bucket to cache traceData
     private static int BATCH_COUNT = 15;
@@ -51,9 +51,9 @@ public class ClientProcessData implements Runnable {
             }
             URL url = new URL(path);
             LOGGER.info("data path:" + path);
-//            HttpURLConnection httpConnection = (HttpURLConnection) url.openConnection(Proxy.NO_PROXY);
-//            InputStream input = httpConnection.getInputStream();
-            InputStream input = url.openStream();
+            HttpURLConnection httpConnection = (HttpURLConnection) url.openConnection(Proxy.NO_PROXY);
+            InputStream input = httpConnection.getInputStream();
+//            InputStream input = url.openStream();
             BufferedReader bf = new BufferedReader(new InputStreamReader(input));
             String line;
             long count = 0;
@@ -71,6 +71,8 @@ public class ClientProcessData implements Runnable {
                         traceMap.put(traceId, spanList);
                     }
                     spanList.add(line);
+
+                    // 筛选出 tags 中存在 http.status_code 不为 200，或者 error 等于1的调用链路
                     if (cols.length > 8) {
                         String tags = cols[8];
                         if (tags != null) {
@@ -82,6 +84,8 @@ public class ClientProcessData implements Runnable {
                         }
                     }
                 }
+
+                //
                 if (count % Constants.BATCH_SIZE == 0) {
                     pos++;
                     // loop cycle
@@ -89,18 +93,25 @@ public class ClientProcessData implements Runnable {
                         pos = 0;
                     }
                     traceMap = BATCH_TRACE_LIST.get(pos);
+
+                    // 判断这个 pos 的 batch 数据有没有被消费完
                     // donot produce data, wait backend to consume data
                     // TODO to use lock/notify
                     if (traceMap.size() > 0) {
                         while (true) {
                             Thread.sleep(10);
+                            LOGGER.warn("$ wait 10 millis $");
                             if (traceMap.size() == 0) {
                                 break;
                             }
                         }
                     }
+
+
                     // batchPos begin from 0, so need to minus 1
+                    // 全局的 batch position，这里不能用 pos，因为 pos 只是 0 至 BATCH_COUNT
                     int batchPos = (int) count / Constants.BATCH_SIZE - 1;
+                    // 远程调用 backend controller，将 badTraceIdList 传过去
                     updateWrongTraceId(badTraceIdList, batchPos);
                     badTraceIdList.clear();
                     LOGGER.info("suc to updateBadTraceId, batchPos:" + batchPos);
@@ -109,6 +120,7 @@ public class ClientProcessData implements Runnable {
             updateWrongTraceId(badTraceIdList, (int) (count / Constants.BATCH_SIZE - 1));
             bf.close();
             input.close();
+            // 通知后端完成
             callFinish();
         } catch (Exception e) {
             LOGGER.warn("fail to process data", e);
@@ -116,7 +128,7 @@ public class ClientProcessData implements Runnable {
     }
 
     /**
-     *  call backend controller to update wrong tradeId list.
+     *  call backend controller to update wrong traceId list.
      * @param badTraceIdList
      * @param batchPos
      */
@@ -194,11 +206,11 @@ public class ClientProcessData implements Runnable {
     private String getPath(){
         String port = System.getProperty("server.port", "8080");
         if ("8000".equals(port)) {
-//            return "http://localhost:" + CommonController.getDataSourcePort() + "/trace1.data";
-            return "file:///E:/Career/tianchi-cloud-native/data/trace1.data";
+            return "http://localhost:" + CommonController.getDataSourcePort() + "/trace1.data";
+//            return "file:///E:/Career/tianchi-cloud-native/data/trace1.data";
         } else if ("8001".equals(port)){
-//            return "http://localhost:" + CommonController.getDataSourcePort() + "/trace2.data";
-            return "file:///E:/Career/tianchi-cloud-native/data/trace2.data";
+            return "http://localhost:" + CommonController.getDataSourcePort() + "/trace2.data";
+//            return "file:///E:/Career/tianchi-cloud-native/data/trace2.data";
         } else {
             return null;
         }

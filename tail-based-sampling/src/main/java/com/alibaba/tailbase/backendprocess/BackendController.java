@@ -55,6 +55,7 @@ public class BackendController {
 
     @RequestMapping("/finish")
     public String finish() {
+        // 计数，两个客户端都完成
         FINISH_PROCESS_COUNT++;
         LOGGER.warn("receive call 'finish', count:" + FINISH_PROCESS_COUNT);
         return "suc";
@@ -91,6 +92,7 @@ public class BackendController {
         TraceIdBatch nextBatch = TRACEID_BATCH_LIST.get(next);
         TraceIdBatch currentBatch = TRACEID_BATCH_LIST.get(CURRENT_BATCH);
         // when client process is finished, or then next trace batch is finished. to get checksum for wrong traces.
+        // TODO
         if ((FINISH_PROCESS_COUNT >= Constants.PROCESS_COUNT && currentBatch.getBatchPos() > 0) ||
                 (nextBatch.getProcessCount() >= PROCESS_COUNT && currentBatch.getProcessCount() >= PROCESS_COUNT)) {
             // reset
